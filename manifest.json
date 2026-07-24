@@ -1,0 +1,21 @@
+{
+  "manifest_version": 3,
+  "name": "Review Desk Helper",
+  "version": "1.0.0",
+  "description": "Pre-fills approved replies on your own Yelp for Business Reviews page and syncs posted status back to your Review Desk. Never clicks Send — that is always you.",
+  "permissions": ["storage"],
+  "host_permissions": [
+    "https://*.onrender.com/*",
+    "http://localhost/*",
+    "http://127.0.0.1/*"
+  ],
+  "background": { "service_worker": "background.js" },
+  "content_scripts": [
+    {
+      "matches": ["https://biz.yelp.com/r2r/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "options_ui": { "page": "options.html", "open_in_tab": true }
+}
