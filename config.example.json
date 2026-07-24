@@ -1,0 +1,6 @@
+{
+  "_comment": "Copy to config.json to ship a pre-configured build. config.json is gitignored because deskToken grants full access to your Review Desk.",
+  "deskUrl": "https://your-review-desk.onrender.com",
+  "deskToken": "your-DASHBOARD_TOKEN-here",
+  "businessName": ""
+}

@@ -6,6 +6,42 @@
 //  2. The token — it stays in chrome.storage and in this worker; the content
 //     script (which runs inside Yelp's page) never sees it.
 
+// ── First-run setup ─────────────────────────────────────────────────────────
+// A distributor can drop a `config.json` next to this file to ship a build that
+// works the moment it is installed — no options screen, nothing to paste:
+//
+//     { "deskUrl": "https://your-desk.onrender.com", "deskToken": "…" }
+//
+// That file is deliberately NOT in version control: it carries a token that
+// grants full access to the desk. Public builds omit it and fall back to
+// opening the options page so the user knows what is missing.
+
+async function seedFromBundledConfig() {
+  try {
+    const res = await fetch(chrome.runtime.getURL('config.json'));
+    if (!res.ok) return false;
+    const cfg = await res.json();
+    const patch = {};
+    for (const k of ['deskUrl', 'deskToken', 'businessName']) {
+      if (cfg[k]) patch[k] = String(cfg[k]).trim();
+    }
+    if (!Object.keys(patch).length) return false;
+    // Never clobber a value the user has already set by hand.
+    const current = await chrome.storage.sync.get({ deskUrl: '', deskToken: '' });
+    if (current.deskUrl && current.deskToken) return true;
+    await chrome.storage.sync.set(patch);
+    return Boolean(patch.deskUrl && patch.deskToken);
+  } catch {
+    return false; // no config.json bundled — normal for public builds
+  }
+}
+
+chrome.runtime.onInstalled.addListener(async ({ reason }) => {
+  if (reason !== 'install') return;
+  const ready = await seedFromBundledConfig();
+  if (!ready) chrome.runtime.openOptionsPage();
+});
+
 async function settings() {
   const s = await chrome.storage.sync.get({ deskUrl: '', deskToken: '' });
   if (!s.deskUrl || !s.deskToken) throw new Error('Set the desk URL and token in the extension options.');

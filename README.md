@@ -61,9 +61,32 @@ Not on the Chrome Web Store; load it unpacked.
 6. Open your Yelp for Business Reviews page. A banner appears bottom-right
    reporting how many approved replies matched.
 
+On first install the options page opens by itself, so there's nothing to hunt
+for.
+
 **Not hosted on Render?** `host_permissions` in `manifest.json` allows
 `*.onrender.com` and localhost. Add your own host there and reload the
 extension.
+
+---
+
+## Zero-setup builds for a team
+
+If you're rolling this out to staff, don't make each person paste a token.
+Build a ZIP that arrives already configured:
+
+```bash
+./build-configured.sh https://your-desk.onrender.com YOUR_DASHBOARD_TOKEN
+# → dist/review-desk-helper-configured.zip
+```
+
+Staff unzip it and load it unpacked — no options screen, nothing to enter. The
+extension reads the bundled `config.json` on install and seeds itself, then
+never touches it again (a value someone sets by hand always wins).
+
+**That ZIP contains a live token**, which grants full read/write access to your
+Review Desk. Hand it to people directly; never attach it to a public release or
+commit it. `config.json` and `dist/` are gitignored for that reason.
 
 ---
 

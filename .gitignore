@@ -1,0 +1,8 @@
+# Pre-configured builds carry a token that grants full access to the Review
+# Desk. Keep it out of version control — ship it inside the ZIP you hand to
+# staff, never in the repo.
+config.json
+
+# Build output
+dist/
+*.zip
