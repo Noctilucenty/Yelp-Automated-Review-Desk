@@ -283,8 +283,23 @@
     }
     if (unanswered.length) {
       const ing = await send({ kind: 'ingest', reviews: unanswered });
-      if (ing.ok && ing.data.ingested > 0) {
-        banner(`Review Desk: found ${ing.data.ingested} new review(s) — drafting now, check the desk shortly`);
+      if (!ing.ok) {
+        banner(`Review Desk: could not reach the desk to check for new reviews — ${ing.error}`);
+      } else if ((ing.data.errors || []).length) {
+        // Loud on purpose. Drafting failing for every review looks exactly like
+        // "nothing new" if you only report successes, and the most likely cause
+        // — an exhausted OpenAI quota — silently stops the whole pipeline.
+        const first = String(ing.data.errors[0]);
+        const quota = /insufficient_quota|exceeded your current quota|429/i.test(first);
+        banner(
+          quota
+            ? 'Review Desk: drafting FAILED — the OpenAI account is out of quota. New reviews will not get drafts until it is topped up.'
+            : `Review Desk: ${ing.data.errors.length} review(s) failed to draft — ${first.slice(0, 120)}`
+        );
+      } else if (ing.data.ingested > 0) {
+        banner(
+          `Review Desk: drafted ${ing.data.ingested} new review(s) — reload this page to get their buttons`
+        );
       }
     }
   }

@@ -13,17 +13,33 @@ removes the copy-paste and the bookkeeping around that click — nothing more.
 
 On `biz.yelp.com/r2r/*`:
 
-1. **Fetches your approved replies** from a Review Desk you run, and matches
-   them to the reviews on screen by reviewer name, rating and date.
-2. **Adds an "Insert approved reply" button** under each matched review.
-   Clicking it opens Yelp's comment box and fills in the approved text.
-3. **You press Send.**
-4. **Marks the item posted** in your Review Desk — but only after the reply
-   actually appears on the page, so the desk records what landed rather than
-   what was attempted.
+1. **Fetches your drafted replies** from a Review Desk you run — both the
+   approved ones and the ones still awaiting review — and matches them to the
+   reviews on screen by reviewer name, rating and date.
+2. **Adds a button under every unanswered review**, colour-coded by state:
+
+   | | Meaning | Button |
+   |---|---|---|
+   | **Blue** | Approved — by a human or by your desk's auto-approve policy | *Insert approved reply* |
+   | **Orange** | Drafted but deliberately held back | *Insert draft — needs your review* |
+
+   Orange rows also carry an inline note naming **why** the desk held it back:
+   the escalation reasons, a possible Terms-of-Service problem, or low draft
+   confidence. After insertion the orange button reads *READ IT, edit, then
+   press Send* rather than the blue path's plain *press Send*.
+
+3. **You press Send.** Always. For both colours.
+4. **Marks the item posted** in your Review Desk — only once the reply actually
+   appears on the page, so the desk records what landed rather than what was
+   attempted. Your edits are captured too, so the desk stores the text you
+   really published, not the suggestion.
 5. **Passively re-ingests** whatever reviews are visible, so simply visiting the
    page keeps your queue current. This matters: Yelp's notification emails are
    truncated and skip most reviews, so email alone under-fills any queue.
+   Newly ingested reviews need one more page load before their button appears.
+
+The colour is the safety mechanism. Nothing is hidden from you, but anything
+that could do damage as a public reply is visibly marked before you send it.
 
 ---
 
@@ -110,6 +126,10 @@ Yelp changes these without notice.
 **If buttons stop appearing**, that's almost certainly why — the selectors in
 `content.js` need updating. The parsing helpers are grouped at the top of the
 file for exactly this reason.
+
+**If a review has no button at all**, it isn't in the desk's queue. Usually that
+means drafting failed. The most common cause is an exhausted LLM quota on the
+desk side, which the banner now reports explicitly instead of failing silently.
 
 ---
 
