@@ -76,9 +76,18 @@
       const ta = parsed.card.querySelector('textarea');
       if (ta) {
         setReactValue(ta, item.effective_reply);
-        button.textContent = 'Filled — press Send (↑)';
-        button.style.background = '#1a7f4b';
-        watchForPost(parsed, item, button);
+        // Track edits so the desk records what was actually posted rather than
+        // what was suggested — that difference is the only real measure of how
+        // good the drafts are.
+        const edits = { text: item.effective_reply };
+        ta.addEventListener('input', () => {
+          edits.text = ta.value;
+        });
+        button.textContent = item.needsReview
+          ? 'Filled — READ IT, edit, then press Send (↑)'
+          : 'Filled — press Send (↑)';
+        button.style.background = item.needsReview ? BTN.review.bg : '#1a7f4b';
+        watchForPost(parsed, item, button, edits);
         return;
       }
       await new Promise((r) => setTimeout(r, 250));
@@ -89,15 +98,22 @@
   // After the human presses Send, Yelp re-renders the card with the comment in
   // it and drops the textarea. That state change — not our button click — is
   // what marks the item posted, so the desk only records what actually landed.
-  function watchForPost(parsed, item, button) {
-    const snippet = item.effective_reply.slice(0, 40);
+  function watchForPost(parsed, item, button, edits) {
     const obs = new MutationObserver(async () => {
       const boxGone = !parsed.card.querySelector('textarea');
-      const replyShown = parsed.card.textContent.includes(snippet);
+      // Match on what the human actually sent, not the original draft — an
+      // edited reply is still a posted reply.
+      const snippet = (edits.text || item.effective_reply).trim().slice(0, 40);
+      const replyShown = snippet.length > 10 && parsed.card.textContent.includes(snippet);
       if (boxGone && replyShown) {
         obs.disconnect();
-        const res = await send({ kind: 'markPosted', id: item.gmail_id });
+        const res = await send({
+          kind: 'markPosted',
+          id: item.gmail_id,
+          final_reply: edits.text,
+        });
         button.textContent = res.ok ? 'Posted ✓ (synced to desk)' : `Posted, sync failed: ${res.error}`;
+        button.style.background = '#1a7f4b';
         button.disabled = true;
       }
     });
@@ -106,13 +122,57 @@
   }
 
   // ── UI ────────────────────────────────────────────────────────────────────
-  function makeButton(label) {
+
+  // Two visual states, because they mean genuinely different things:
+  //   ready  (blue)   — cleared by the auto-approve policy or by a human. Post it.
+  //   review (orange) — a draft nobody has approved. The desk held it back for a
+  //                     reason: low rating, an escalation keyword, or a possible
+  //                     Terms-of-Service problem. Read and edit before sending.
+  const BTN = {
+    ready: { bg: '#0a7cff', label: 'Insert approved reply' },
+    review: { bg: '#e07b12', label: 'Insert draft — needs your review' },
+  };
+
+  function makeButton(variant) {
     const b = document.createElement('button');
-    b.textContent = label;
+    b.textContent = BTN[variant].label;
     b.style.cssText =
       'margin:6px 0 0;padding:6px 14px;border-radius:999px;border:none;cursor:pointer;' +
-      'background:#0a7cff;color:#fff;font:600 13px system-ui;display:block';
+      'background:' + BTN[variant].bg + ';color:#fff;font:600 13px system-ui;display:block';
     return b;
+  }
+
+  // Spells out WHY the desk held this one back, so the warning is actionable
+  // rather than just a colour.
+  function makeWarning(item) {
+    const reasons = [];
+
+    // The desk's own escalation reasons are the most specific thing we have.
+    // They already state the rating rule, so don't repeat it separately.
+    for (const r of item.escalate_reasons || []) {
+      // Strip the "model: " prefix and clip the model's rationale — the point
+      // is to prompt a read, not to reproduce the analysis inline.
+      const clean = String(r).replace(/^model:\s*/, '');
+      reasons.push(clean.length > 90 ? clean.slice(0, 90).trimEnd() + '…' : clean);
+    }
+    if ((item.tos_flags || []).length) {
+      reasons.push('possible Terms-of-Service issue — consider reporting rather than replying');
+    }
+    if (!reasons.length && item.draft_confidence && item.draft_confidence !== 'high') {
+      reasons.push('draft confidence: ' + item.draft_confidence);
+    }
+    if (!reasons.length) reasons.push('not yet approved by anyone');
+
+    const d = document.createElement('div');
+    const head = document.createElement('strong');
+    head.textContent = 'Read before sending. ';
+    d.appendChild(head);
+    // textContent, never innerHTML: review text and model output are untrusted.
+    d.appendChild(document.createTextNode(reasons.join(' · ')));
+    d.style.cssText =
+      'margin:6px 0 0;padding:7px 11px;border-radius:8px;font:500 12px/1.45 system-ui;' +
+      'background:#fff4e5;color:#7a4b00;border:1px solid #f0b357;max-width:620px';
+    return d;
   }
 
   function banner(text) {
@@ -134,20 +194,34 @@
     // Desk serves several listings; blank is fine and the desk falls back to
     // whatever the listing header on the page says.
     const businessName = (await send({ kind: 'getBusinessName' }))?.data || '';
-    const res = await send({ kind: 'getApproved' });
-    if (!res.ok) {
-      banner(`Review Desk: ${res.error}`);
+
+    // Both buckets, so every unanswered review on the page gets a button:
+    //   approved — cleared to post (blue)
+    //   pending  — drafted but deliberately held back for a human (orange)
+    const [appRes, penRes] = await Promise.all([
+      send({ kind: 'getQueue', status: 'approved' }),
+      send({ kind: 'getQueue', status: 'pending' }),
+    ]);
+    if (!appRes.ok) {
+      banner(`Review Desk: ${appRes.error}`);
       return;
     }
-    const items = res.data.items || [];
+    const approved = (appRes.data.items || []).map((i) => ({ ...i, needsReview: false }));
+    const pending = penRes.ok ? (penRes.data.items || []).map((i) => ({ ...i, needsReview: true })) : [];
+    const items = [...approved, ...pending];
+
     const unclaimed = new Map(); // key -> [items]
     for (const it of items) {
       const k = itemKey(it);
       if (!unclaimed.has(k)) unclaimed.set(k, []);
       unclaimed.get(k).push(it);
     }
+    // If a review somehow sits in both buckets, prefer the approved one — a
+    // human already signed off on that text.
+    for (const list of unclaimed.values()) list.sort((a, b) => a.needsReview - b.needsReview);
 
     let matched = 0;
+    let needsReview = 0;
     const seenForIngest = [];
     for (const s of starEls()) {
       const parsed = parseCard(s);
@@ -168,19 +242,28 @@
       if (!queue || !queue.length) continue;
       const item = queue.shift();
       matched++;
-      const btn = makeButton('Insert approved reply');
+      if (item.needsReview) needsReview++;
+
+      const btn = makeButton(item.needsReview ? 'review' : 'ready');
       btn.addEventListener('click', () => insertReply(parsed, item, btn));
+
       // Place the button under the Thank/Comment row.
       const row = [...parsed.card.querySelectorAll('button, a')].find(
         (b) => b.textContent.trim() === 'Comment'
       );
-      (row?.parentElement || parsed.card).appendChild(btn);
+      const host = row?.parentElement || parsed.card;
+      if (item.needsReview) {
+        const warn = makeWarning(item);
+        if (warn) host.appendChild(warn);
+      }
+      host.appendChild(btn);
     }
 
+    const ready = matched - needsReview;
     banner(
       matched
-        ? `Review Desk: ${matched} approved repl${matched === 1 ? 'y' : 'ies'} ready — blue buttons below each review`
-        : `Review Desk: no approved replies match the reviews on screen (${items.length} approved total)`
+        ? `Review Desk: ${matched} drafted — ${ready} approved (blue), ${needsReview} need your review (orange)`
+        : `Review Desk: nothing on screen matches the queue (${items.length} drafted in total)`
     );
 
     // Passive re-scrape of whatever is visible: keeps the desk's queue fresh

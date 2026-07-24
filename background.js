@@ -65,17 +65,22 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       if (msg.kind === 'getBusinessName') {
         const s = await chrome.storage.sync.get({ businessName: '' });
         sendResponse({ ok: true, data: s.businessName });
-      } else if (msg.kind === 'getApproved') {
-        // Approved = a human (or the auto-approve policy) signed off; these are
-        // the only replies this extension will ever offer to insert.
-        sendResponse({ ok: true, data: await api('/api/queue?status=approved&limit=100') });
+      } else if (msg.kind === 'getQueue') {
+        // 'approved' = cleared to post. 'pending' = drafted but held back for a
+        // human. The content script renders them differently; it never posts
+        // either on its own.
+        const status = msg.status === 'pending' ? 'pending' : 'approved';
+        sendResponse({ ok: true, data: await api(`/api/queue?status=${status}&limit=100`) });
       } else if (msg.kind === 'markPosted') {
+        // final_reply is what the human actually sent, edits included — so the
+        // desk records the posted text rather than the suggestion.
+        const body = { status: 'posted', reviewed_by: 'extension' };
+        if (typeof msg.final_reply === 'string' && msg.final_reply.trim()) {
+          body.final_reply = msg.final_reply;
+        }
         sendResponse({
           ok: true,
-          data: await api(`/api/item/${encodeURIComponent(msg.id)}/decision`, {
-            status: 'posted',
-            reviewed_by: 'extension',
-          }),
+          data: await api(`/api/item/${encodeURIComponent(msg.id)}/decision`, body),
         });
       } else if (msg.kind === 'ingest') {
         // Passive re-scrape: whatever reviews were visible on the page get
