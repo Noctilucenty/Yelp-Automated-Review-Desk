@@ -54,13 +54,29 @@
     await new Promise((r) => setTimeout(r, 1200));
   }
 
+  // Yelp concatenates the date onto whatever precedes it ("3 reviews7/21/26"),
+  // so there is no word boundary to anchor on — and an unbounded match then
+  // steals a neighbouring digit. Both failure modes are in the live database:
+  // "68/4/23" (a leading digit from a count) and "7/13/235" (a trailing one).
+  // Repair rather than reject: an impossible month or a three-digit year is
+  // exactly one stolen character, and which end it came from is unambiguous.
+  function cardDate(text) {
+    for (const m of text.matchAll(/(\d{1,2})\/(\d{1,2})\/(\d{2,4})/g)) {
+      let [, mo, d, y] = m;
+      if (+mo > 12 && mo.length === 2) mo = mo[1];
+      if (y.length === 3) y = y.slice(0, 2);
+      if (+mo >= 1 && +mo <= 12 && +d >= 1 && +d <= 31) return `${mo}/${d}/${y}`;
+    }
+    return '';
+  }
+
   function parseCard(starEl) {
     const card = cardOf(starEl);
     if (!card) return null;
     const passport = card.querySelector('[class*="passport-container"]');
     const name = passport?.querySelector('span')?.textContent?.trim() || '?';
     const rating = parseInt(starEl.getAttribute('aria-label'));
-    const date = card.textContent.match(/(\d{1,2}\/\d{1,2}\/\d{2,4})/)?.[1] || '';
+    const date = cardDate(card.textContent);
     let text = '';
     for (const p of card.querySelectorAll('p, span')) {
       if (passport && passport.contains(p)) continue;
@@ -72,16 +88,28 @@
   }
 
   // ── Matching desk items to cards ──────────────────────────────────────────
-  // Name alone collides (the queue really has the same reviewer twice), so the
-  // key is name+rating+date; consumed items are struck off so duplicates match
-  // one card each, in order.
-  function matchKey(name, rating, date) {
-    return `${name}|${rating}|${date}`;
+  // Name alone collides (the queue really does hold the same reviewer twice —
+  // Tina S. wrote two separate 1-star reviews), so the key needs a third part.
+  //
+  // That part used to be the card date, which was a mistake: the date is scraped
+  // out of concatenated DOM text and picks up neighbouring digits, so the desk
+  // holds values like "7/13/235" and "68/4/23". It happened to work only because
+  // both sides ran the identical buggy regex.
+  //
+  // The review's own opening is a far better discriminator: it is the thing that
+  // actually distinguishes two reviews by the same person, it needs no parsing,
+  // and it cannot drift between the page and the desk because the desk stored it
+  // from this same extraction. Normalised so whitespace changes cannot break it.
+  function textKey(text) {
+    return String(text || '').replace(/\s+/g, ' ').trim().toLowerCase().slice(0, 40);
+  }
+
+  function matchKey(name, rating, text) {
+    return `${name}|${rating}|${textKey(text)}`;
   }
 
   function itemKey(item) {
-    const date = (item.subject || '').match(/\((\d{1,2}\/\d{1,2}\/\d{2,4})\)/)?.[1] || '';
-    return matchKey(item.reviewer_name, item.rating, date);
+    return matchKey(item.reviewer_name, item.rating, item.review_text);
   }
 
   // ── Filling the comment box ───────────────────────────────────────────────
@@ -270,7 +298,7 @@
         });
       }
       if (parsed.answered) continue;
-      const k = matchKey(parsed.name, parsed.rating, parsed.date);
+      const k = matchKey(parsed.name, parsed.rating, parsed.text);
       const queue = unclaimed.get(k);
       if (!queue || !queue.length) continue;
       const item = queue.shift();
