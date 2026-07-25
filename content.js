@@ -26,6 +26,34 @@
     return card;
   }
 
+  // Yelp paginates: the Reviews page renders roughly the ten most recent and
+  // hides the rest behind "Load more". Without this the desk only ever learns
+  // about page one, which looks exactly like "no new reviews" — reviews sit
+  // unanswered indefinitely and nothing reports an error. Both predicates are
+  // deliberately narrow (exact-ish label matches on pagination controls only);
+  // this runs unattended on page load, so it must never click anything that
+  // changes state.
+  async function expandAll(onProgress) {
+    const click = (pred) => {
+      let n = 0;
+      for (const b of document.querySelectorAll('button,a')) {
+        if (pred(b.textContent.trim().toLowerCase())) {
+          b.click();
+          n++;
+        }
+      }
+      return n;
+    };
+    for (let page = 0; page < 10; page++) {
+      if (!click((t) => t.startsWith('load more'))) break;
+      onProgress?.(page + 2);
+      await new Promise((r) => setTimeout(r, 2500));
+    }
+    // Expand truncated bodies, or the desk ingests "…" and drafts from a stub.
+    click((t) => t === 'read more');
+    await new Promise((r) => setTimeout(r, 1200));
+  }
+
   function parseCard(starEl) {
     const card = cardOf(starEl);
     if (!card) return null;
@@ -194,6 +222,11 @@
     // Desk serves several listings; blank is fine and the desk falls back to
     // whatever the listing header on the page says.
     const businessName = (await send({ kind: 'getBusinessName' }))?.data || '';
+
+    // Load every page BEFORE matching, so buttons and ingest both see the whole
+    // history rather than the first screen.
+    banner('Review Desk: loading your full review history…');
+    await expandAll((p) => banner(`Review Desk: loading page ${p} of reviews…`));
 
     // Both buckets, so every unanswered review on the page gets a button:
     //   approved — cleared to post (blue)

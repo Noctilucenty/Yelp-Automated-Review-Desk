@@ -59,6 +59,29 @@ async function api(path, body) {
   return res.json();
 }
 
+const INGEST_BATCH = 5;
+
+async function ingestChunked(reviews) {
+  const total = { ingested: 0, auto_approved: 0, already_known: 0, errors: [], counts: null };
+  for (let i = 0; i < reviews.length; i += INGEST_BATCH) {
+    const slice = reviews.slice(i, i + INGEST_BATCH);
+    try {
+      const r = await api('/api/ingest', { reviews: slice });
+      total.ingested += r.ingested || 0;
+      total.auto_approved += r.auto_approved || 0;
+      total.already_known += r.already_known || 0;
+      total.errors.push(...(r.errors || []));
+      total.counts = r.counts || total.counts;
+    } catch (e) {
+      // One failed batch must not discard the ones that already landed —
+      // otherwise a single timeout looks like a total outage and the next page
+      // load starts over from nothing.
+      total.errors.push(`batch of ${slice.length} failed: ${String(e.message || e)}`);
+    }
+  }
+  return total;
+}
+
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   (async () => {
     try {
@@ -85,7 +108,14 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       } else if (msg.kind === 'ingest') {
         // Passive re-scrape: whatever reviews were visible on the page get
         // pushed to the desk. Idempotent server-side, so this is free to spam.
-        sendResponse({ ok: true, data: await api('/api/ingest', { reviews: msg.reviews }) });
+        //
+        // Chunked because every genuinely-new review costs one model call
+        // server-side. Reviews the desk already knows short-circuit before that
+        // call, so a routine re-scan is fast — but the first scan after a fresh
+        // deploy is all-new, and sending forty at once exceeds the gateway
+        // timeout and loses the entire batch. Same batch size as
+        // scripts/ingest_scraped.py, for the same reason.
+        sendResponse({ ok: true, data: await ingestChunked(msg.reviews) });
       } else {
         sendResponse({ ok: false, error: `unknown message kind: ${msg.kind}` });
       }

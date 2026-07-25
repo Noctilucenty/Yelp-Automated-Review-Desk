@@ -33,10 +33,16 @@ On `biz.yelp.com/r2r/*`:
    appears on the page, so the desk records what landed rather than what was
    attempted. Your edits are captured too, so the desk stores the text you
    really published, not the suggestion.
-5. **Passively re-ingests** whatever reviews are visible, so simply visiting the
+5. **Passively re-ingests your whole review history**, so simply visiting the
    page keeps your queue current. This matters: Yelp's notification emails are
    truncated and skip most reviews, so email alone under-fills any queue.
    Newly ingested reviews need one more page load before their button appears.
+
+   On each visit it walks Yelp's *Load more* pagination (up to ten pages) and
+   expands truncated bodies before scanning, so reviews below the first screen
+   are seen too. That takes a few seconds — the status pill in the corner tells
+   you which page it is on. Reviews the desk already knows are skipped cheaply,
+   so a routine visit is fast; only genuinely new ones cost anything.
 
 The colour is the safety mechanism. Nothing is hidden from you, but anything
 that could do damage as a public reply is visibly marked before you send it.
