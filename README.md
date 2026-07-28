@@ -67,28 +67,73 @@ a banner saying it can't reach the desk.
 
 ---
 
+## Download
+
+### ➜ [Download the latest release](../../releases/latest)
+
+Grab the `.zip` under **Assets** and unzip it. You'll get a folder called
+`review-desk-helper` with a `manifest.json` inside — that folder is the
+extension.
+
+On macOS Safari and Chrome unzip downloads automatically, so check your
+Downloads folder before unzipping again.
+
+**Why the release and not the green Code button?** A release is a fixed,
+numbered version. `main` moves, so a copy taken from it has no version you can
+compare against later — and because Chrome cannot auto-update an extension
+loaded this way (see [Updating](#updating)), knowing which version you have is
+the only way to tell whether you are missing a fix.
+
+<details>
+<summary>Other ways to get it</summary>
+
+- `git clone https://github.com/Noctilucenty/Yelp-Automated-Review-Desk.git` —
+  best if you intend to change the code; `git pull` then replaces the download
+  step when updating.
+- [Download `main` as a ZIP](../../archive/refs/heads/main.zip) — the newest
+  code, including anything not yet released. Unversioned; use a release unless
+  you specifically want unreleased changes.
+
+</details>
+
+---
+
 ## Install
 
-Not on the Chrome Web Store; load it unpacked.
+Not on the Chrome Web Store, so Chrome loads it straight from the folder.
 
-1. **Download** — [download the ZIP](../../archive/refs/heads/main.zip) and
-   unzip it, or `git clone` this repo.
+1. **Download and unzip** it (above). Keep the folder somewhere permanent —
+   Chrome reads it from that location every time it starts, so a folder in
+   Downloads that you later clear out will break the extension.
 2. Open **`chrome://extensions`**.
-3. Turn on **Developer mode** (top-right).
-4. Click **Load unpacked** and select the folder containing `manifest.json`.
-5. On the extension card click **Details → Extension options**, then set:
+3. Turn on **Developer mode** — top-right corner.
+4. Click **Load unpacked** and select the unzipped folder — the one with
+   `manifest.json` directly inside it. If Chrome says it cannot find a manifest,
+   you have selected the wrapper folder; go one level in.
+5. The options page opens by itself. Fill in:
    - **Review Desk URL** — where your desk is deployed
    - **Dashboard token** — the same value as `DASHBOARD_TOKEN` on your server
    - **Business name** — optional; only useful if one desk serves several listings
-6. Open your Yelp for Business Reviews page. A banner appears bottom-right
-   reporting how many approved replies matched.
+6. Open your Yelp for Business Reviews page. A status pill appears bottom-right
+   saying how many replies it matched. Give it a few seconds — it pages through
+   your whole review history first.
 
-On first install the options page opens by itself, so there's nothing to hunt
-for.
+Nothing is posted at any point. The extension fills the reply box; you press
+Send.
 
 **Not hosted on Render?** `host_permissions` in `manifest.json` allows
 `*.onrender.com` and localhost. Add your own host there and reload the
 extension.
+
+### If something looks wrong
+
+| What you see | What it means |
+|---|---|
+| No status pill at all | The extension is disabled, or you are not on a `biz.yelp.com/r2r/...` page |
+| `Desk API 401` | Wrong dashboard token — or the desk's token was rotated and yours is stale |
+| `could not reach the desk` | Wrong URL, or the desk is asleep/down |
+| `nothing on screen matches the queue` | Connected fine, but the desk holds no drafts for these reviews yet |
+| No buttons on a brand-new review | It was ingested on this visit; the buttons appear once drafting finishes |
 
 ---
 
