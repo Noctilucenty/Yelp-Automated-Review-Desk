@@ -92,6 +92,36 @@ extension.
 
 ---
 
+## Updating
+
+**Chrome does not auto-update an extension loaded unpacked.** That is not a
+setting you can turn on — auto-update belongs to the Web Store, and this
+extension deliberately isn't there, because a pre-configured build carries a
+token that has no business on a public listing. So a copy you loaded once keeps
+running that code until you replace it by hand.
+
+That matters more than it sounds. The failures this extension has had were all
+silent: a version that only ever read the first page of reviews reported
+"nothing new" instead of "I only looked at page one". A fixed bug looks
+identical to no bug at all, so nothing prompts you to update.
+
+To update:
+
+1. Download the [latest release](../../releases/latest) and unzip it.
+2. Replace the contents of the folder you loaded — same folder, new files.
+3. Open **`chrome://extensions`** and click the **reload** (↻) icon on the card.
+
+Your settings survive: the desk URL and token live in Chrome's storage, not in
+the folder, so there is nothing to paste again.
+
+The extension checks the releases page once a day and appends a line to its
+status pill when a newer version exists. That check is best-effort — offline,
+rate-limited, or blocked all mean it stays quiet rather than showing an error.
+If you would rather it never called GitHub, remove `https://api.github.com/*`
+from `host_permissions`; everything else keeps working.
+
+---
+
 ## Zero-setup builds for a team
 
 If you're rolling this out to staff, don't make each person paste a token.

@@ -59,6 +59,51 @@ async function api(path, body) {
   return res.json();
 }
 
+// ── Update checking ─────────────────────────────────────────────────────────
+// Chrome never auto-updates an extension loaded unpacked, and this one is
+// installed that way by design — it carries a token, so it does not belong in
+// the Web Store. The consequence is that a copy someone loaded months ago keeps
+// running old code forever and nothing tells them. Since the failure modes here
+// are silent by nature (a fixed bug means reviews stop being missed, which
+// looks exactly like nothing happening), the extension has to say so itself.
+//
+// Checked against the public repo's latest release, at most once a day, and
+// entirely failure-tolerant: no network, rate limited, or offline all mean "say
+// nothing" rather than "show an error". An update notice must never be the
+// reason the actual work stops.
+const RELEASES_URL =
+  'https://api.github.com/repos/Noctilucenty/Yelp-Automated-Review-Desk/releases/latest';
+const UPDATE_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
+
+function isOlder(a, b) {
+  const pa = String(a).split('.').map(Number);
+  const pb = String(b).split('.').map(Number);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const x = pa[i] || 0, y = pb[i] || 0;
+    if (x !== y) return x < y;
+  }
+  return false;
+}
+
+async function updateStatus() {
+  const current = chrome.runtime.getManifest().version;
+  const store = await chrome.storage.local.get({ updateCheckedAt: 0, latestKnown: '' });
+  let latest = store.latestKnown;
+
+  if (Date.now() - store.updateCheckedAt > UPDATE_CHECK_INTERVAL_MS) {
+    try {
+      const res = await fetch(RELEASES_URL, { headers: { Accept: 'application/vnd.github+json' } });
+      if (res.ok) {
+        latest = String((await res.json()).tag_name || '').replace(/^v/, '');
+        await chrome.storage.local.set({ updateCheckedAt: Date.now(), latestKnown: latest });
+      }
+    } catch {
+      // Offline, rate limited, or the repo moved. Fall through to what we knew.
+    }
+  }
+  return { current, latest, behind: Boolean(latest) && isOlder(current, latest) };
+}
+
 const INGEST_BATCH = 5;
 
 async function ingestChunked(reviews) {
@@ -85,7 +130,9 @@ async function ingestChunked(reviews) {
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   (async () => {
     try {
-      if (msg.kind === 'getBusinessName') {
+      if (msg.kind === 'checkUpdate') {
+        sendResponse({ ok: true, data: await updateStatus() });
+      } else if (msg.kind === 'getBusinessName') {
         const s = await chrome.storage.sync.get({ businessName: '' });
         sendResponse({ ok: true, data: s.businessName });
       } else if (msg.kind === 'getQueue') {

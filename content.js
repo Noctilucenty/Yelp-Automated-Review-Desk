@@ -351,6 +351,24 @@
         : `Review Desk: nothing on screen matches the queue (${items.length} drafted in total)`
     );
 
+    // Appended to the normal status rather than shown as its own alert: this is
+    // worth knowing, not worth interrupting for. Chrome cannot auto-update an
+    // unpacked extension, so without this an old copy runs indefinitely and the
+    // only symptom is fixed bugs quietly not being fixed.
+    const upd = await send({ kind: 'checkUpdate' });
+    if (upd?.ok && upd.data.behind) {
+      const el = document.getElementById('__deskBanner');
+      if (el) {
+        const line = document.createElement('div');
+        line.style.cssText = 'margin-top:6px;padding-top:6px;border-top:1px solid #444;font-size:12px';
+        line.appendChild(document.createTextNode(
+          `Update available: v${upd.data.latest} (you have v${upd.data.current}). ` +
+          'Download it, then press Reload on chrome://extensions.'
+        ));
+        el.appendChild(line);
+      }
+    }
+
     // Passive re-scrape of whatever is visible: keeps the desk's queue fresh
     // without anyone remembering to run the scraper. sha1 of name|date|text
     // must match scripts/ingest_scraped.py so dedupe holds across both paths.
