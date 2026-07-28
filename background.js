@@ -16,7 +16,7 @@
 // grants full access to the desk. Public builds omit it and fall back to
 // opening the options page so the user knows what is missing.
 
-async function seedFromBundledConfig() {
+async function seedFromBundledConfig({ overwrite = false } = {}) {
   try {
     const res = await fetch(chrome.runtime.getURL('config.json'));
     if (!res.ok) return false;
@@ -26,9 +26,9 @@ async function seedFromBundledConfig() {
       if (cfg[k]) patch[k] = String(cfg[k]).trim();
     }
     if (!Object.keys(patch).length) return false;
-    // Never clobber a value the user has already set by hand.
     const current = await chrome.storage.sync.get({ deskUrl: '', deskToken: '' });
-    if (current.deskUrl && current.deskToken) return true;
+    // On first install, never clobber a value the user set by hand.
+    if (!overwrite && current.deskUrl && current.deskToken) return true;
     await chrome.storage.sync.set(patch);
     return Boolean(patch.deskUrl && patch.deskToken);
   } catch {
@@ -37,9 +37,19 @@ async function seedFromBundledConfig() {
 }
 
 chrome.runtime.onInstalled.addListener(async ({ reason }) => {
-  if (reason !== 'install') return;
-  const ready = await seedFromBundledConfig();
-  if (!ready) chrome.runtime.openOptionsPage();
+  // 'update' fires when a rebuilt folder is reloaded with a new version. That
+  // is the path a token rotation takes: the desk's token changes, every
+  // installed copy starts answering 401, and the only fix used to be each
+  // person opening the options page and pasting a new value they were sent
+  // over chat — which is both a chore and exactly how tokens leak.
+  //
+  // So a bundled config.json wins on update. It is the distributor's stated
+  // intent and it shipped inside the build the user chose to install, which is
+  // the same trust boundary as the first install. Builds with no config.json
+  // (every public one) are unaffected and keep whatever the user configured.
+  if (reason !== 'install' && reason !== 'update') return;
+  const ready = await seedFromBundledConfig({ overwrite: reason === 'update' });
+  if (!ready && reason === 'install') chrome.runtime.openOptionsPage();
 });
 
 async function settings() {
