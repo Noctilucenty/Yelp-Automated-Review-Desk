@@ -214,6 +214,10 @@
     if ((item.tos_flags || []).length) {
       reasons.push('possible Terms-of-Service issue — consider reporting rather than replying');
     }
+    for (const f of item.validator_failures || []) {
+      reasons.push(String(f).split(':')[0].replace(/_/g, ' '));
+    }
+    if (item.quality_passed === false) reasons.push('did not clear the quality gate');
     if (!reasons.length && item.draft_confidence && item.draft_confidence !== 'high') {
       reasons.push('draft confidence: ' + item.draft_confidence);
     }
@@ -225,6 +229,26 @@
     d.appendChild(head);
     // textContent, never innerHTML: review text and model output are untrusted.
     d.appendChild(document.createTextNode(reasons.join(' · ')));
+
+    // What the desk decided this review is about and what it commits us to.
+    // Checking the reading is much faster than reverse-engineering it from the
+    // prose, and a wrong reading is the usual cause of a bad draft.
+    const p = item.plan || {};
+    const bits = [];
+    if (p.primary_issue) bits.push('issue: ' + String(p.primary_issue).replace(/_/g, ' '));
+    if (p.customer_impact) bits.push('cost them: ' + p.customer_impact);
+    if (p.selected_business_action) {
+      bits.push('we will: ' + String(p.selected_business_action).replace(/_/g, ' '));
+    }
+    if (p.followup_channel) bits.push('via: ' + String(p.followup_channel).replace(/_/g, ' '));
+    bits.push(p.compensation_offer ? 'offer: ' + p.compensation_offer : 'no concession authorised');
+    if (bits.length) {
+      const plan = document.createElement('div');
+      plan.style.cssText = 'margin-top:5px;padding-top:5px;border-top:1px solid #f0b357;opacity:.9';
+      plan.appendChild(document.createTextNode(bits.join(' · ')));
+      d.appendChild(plan);
+    }
+
     d.style.cssText =
       'margin:6px 0 0;padding:7px 11px;border-radius:8px;font:500 12px/1.45 system-ui;' +
       'background:#fff4e5;color:#7a4b00;border:1px solid #f0b357;max-width:620px';
